@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a0e1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta
+      name="description"
+      content="Remote Desktop Controller for Linux — control your laptop from your phone"
+    />
+
+    <title>Door Se Kaam</title>
+
+    <link rel="manifest" href="/static/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  SCREEN: CONNECTION / SETUP                     -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="screen-connection" class="screen active">
+      <div class="screen-content centered">
+        <div class="logo-section">
+          <div class="logo-icon">
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <rect
+                x="8"
+                y="12"
+                width="48"
+                height="32"
+                rx="4"
+                stroke="url(#grad1)"
+                stroke-width="2.5"
+                fill="none"
+              />
+              <rect
+                x="24"
+                y="44"
+                width="16"
+                height="4"
+                rx="1"
+                fill="url(#grad1)"
+              />
+              <rect
+                x="20"
+                y="48"
+                width="24"
+                height="2"
+                rx="1"
+                fill="url(#grad1)"
+                opacity="0.6"
+              />
+              <circle cx="48" cy="20" r="3" fill="#10b981" />
+              <path d="M20 24L28 28L20 32Z" fill="url(#grad1)" opacity="0.8" />
+              <defs>
+                <linearGradient id="grad1" x1="0" y1="0" x2="64" y2="64">
+                  <stop offset="0%" stop-color="#00d4ff" />
+                  <stop offset="100%" stop-color="#8b5cf6" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h1 class="app-title">Door Se Kaam</h1>
+          <p class="app-subtitle">Remote Desktop Controller</p>
+        </div>
+
+        <!-- Setup Form (first time) -->
+        <div id="setup-form" class="card glass-card hidden">
+          <h2 class="card-title">🔐 First-Time Setup</h2>
+          <p class="card-desc">
+            Set a password to secure your remote connection.
+          </p>
+          <div class="input-group">
+            <input
+              type="password"
+              id="setup-password"
+              placeholder="Enter password"
+              class="input"
+              autocomplete="new-password"
+            />
+          </div>
+          <div class="input-group">
+            <input
+              type="password"
+              id="setup-password-confirm"
+              placeholder="Confirm password"
+              class="input"
+              autocomplete="new-password"
+            />
+          </div>
+          <button id="btn-setup" class="btn btn-primary btn-full">
+            Set Password & Connect
+          </button>
+          <div id="setup-error" class="error-text hidden"></div>
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-form" class="card glass-card hidden">
+          <h2 class="card-title">🔑 Authentication</h2>
+          <p class="card-desc">Enter your password to connect.</p>
+          <div class="input-group">
+            <input
+              type="password"
+              id="login-password"
+              placeholder="Password"
+              class="input"
+              autocomplete="current-password"
+            />
+          </div>
+          <button id="btn-login" class="btn btn-primary btn-full">
+            Connect
+          </button>
+          <div id="login-error" class="error-text hidden"></div>
+        </div>
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="status-bar">
+          <div class="status-dot" id="status-dot"></div>
+          <span id="status-text">Checking server...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  SCREEN: REMOTE DESKTOP                         -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="screen-desktop" class="screen">
+      <div class="desktop-container">
+        <!-- Canvas for screen rendering -->
+        <canvas id="remote-screen" class="remote-screen"></canvas>
+
+        <!-- Cursor indicator -->
+        <div id="cursor-indicator" class="cursor-indicator hidden">
+          <div class="cursor-dot"></div>
+          <div class="cursor-ripple"></div>
+        </div>
+      </div>
+
+      <!-- Stats overlay -->
+      <div id="stats-overlay" class="stats-overlay">
+        <span id="stat-fps" class="stat">-- FPS</span>
+        <span id="stat-latency" class="stat">-- ms</span>
+        <span id="stat-quality" class="stat">--% Q</span>
+      </div>
+
+      <!-- Floating toolbar -->
+      <div id="floating-toolbar" class="floating-toolbar">
+        <!-- Workspace Left -->
+        <button id="btn-ws-left" class="toolbar-btn" title="Workspace Left">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+
+        <!-- Alt+Tab Window Switcher -->
+        <button id="btn-alt-tab" class="toolbar-btn toolbar-btn-accent" title="Switch Window (Alt+Tab)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="9" height="8" rx="1.5" />
+            <rect x="13" y="12" width="9" height="8" rx="1.5" />
+            <path d="M7 15l3-3m0 0l3 3m-3-3v8" stroke-width="1.5" />
+          </svg>
+        </button>
+
+        <!-- Workspace Right -->
+        <button id="btn-ws-right" class="toolbar-btn" title="Workspace Right">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+
+        <!-- Divider -->
+        <div class="toolbar-divider"></div>
+
+        <!-- Keyboard -->
+        <button id="btn-keyboard" class="toolbar-btn" title="Keyboard">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
+          </svg>
+        </button>
+
+        <!-- Disconnect -->
+        <button id="btn-disconnect" class="toolbar-btn toolbar-btn-danger" title="Disconnect">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18.36 6.64A9 9 0 115.64 18.36 9 9 0 0118.36 6.64z" />
+            <line x1="12" y1="2" x2="12" y2="12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Mode indicator -->
+      <div id="mode-indicator" class="mode-indicator">
+        <span id="mode-text">Touchpad Mode</span>
+      </div>
+
+      <!-- Special keys bar -->
+      <div id="special-keys-bar" class="special-keys-bar hidden">
+        <div class="special-keys-scroll">
+          <button class="skey" data-key="escape">Esc</button>
+          <button class="skey" data-key="tab">Tab</button>
+          <button class="skey mod-key" data-modifier="ctrl" id="mod-ctrl">
+            Ctrl
+          </button>
+          <button class="skey mod-key" data-modifier="alt" id="mod-alt">
+            Alt
+          </button>
+          <button class="skey mod-key" data-modifier="shift" id="mod-shift">
+            Shift
+          </button>
+          <button class="skey mod-key" data-modifier="super" id="mod-super">
+            Super
+          </button>
+          <button class="skey" data-key="up">↑</button>
+          <button class="skey" data-key="down">↓</button>
+          <button class="skey" data-key="left">←</button>
+          <button class="skey" data-key="right">→</button>
+          <button class="skey" data-key="delete">Del</button>
+          <button class="skey" data-key="home">Home</button>
+          <button class="skey" data-key="end">End</button>
+          <button class="skey" data-combo="ctrl+c">⌘C</button>
+          <button class="skey" data-combo="ctrl+v">⌘V</button>
+          <button class="skey" data-combo="ctrl+z">⌘Z</button>
+          <button class="skey" data-combo="ctrl+alt+t">Term</button>
+          <button class="skey" data-key="f1">F1</button>
+          <button class="skey" data-key="f2">F2</button>
+          <button class="skey" data-key="f3">F3</button>
+          <button class="skey" data-key="f4">F4</button>
+          <button class="skey" data-key="f5">F5</button>
+          <button class="skey" data-key="f11">F11</button>
+          <button class="skey" data-key="f12">F12</button>
+        </div>
+      </div>
+
+      <!-- Hidden input for system keyboard -->
+      <input
+        type="text"
+        id="hidden-keyboard-input"
+        class="hidden-keyboard-input"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  SCREEN: FILE MANAGER                           -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="screen-files" class="screen">
+      <div class="screen-content">
+        <div class="screen-header">
+          <button id="btn-files-back" class="btn-back">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <h2>File Manager</h2>
+          <button id="btn-upload" class="btn btn-small btn-primary">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"
+              />
+            </svg>
+            Upload
+          </button>
+        </div>
+        <div id="file-path-bar" class="file-path-bar">
+          <span id="current-path">~</span>
+        </div>
+        <div id="file-list" class="file-list">
+          <!-- Files rendered here by JS -->
+        </div>
+        <input type="file" id="file-upload-input" class="hidden" multiple />
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  SCREEN: SETTINGS                               -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="screen-settings" class="screen">
+      <div class="screen-content">
+        <div class="screen-header">
+          <button id="btn-settings-back" class="btn-back">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <h2>Settings</h2>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">Display</h3>
+          <div class="setting-row">
+            <label>Stream Quality</label>
+            <input
+              type="range"
+              id="setting-quality"
+              min="10"
+              max="100"
+              value="60"
+              class="slider"
+            />
+            <span id="quality-label" class="setting-value">60%</span>
+          </div>
+          <div class="setting-row">
+            <label>Max FPS</label>
+            <input
+              type="range"
+              id="setting-fps"
+              min="5"
+              max="30"
+              value="15"
+              class="slider"
+            />
+            <span id="fps-label" class="setting-value">15</span>
+          </div>
+          <div class="setting-row">
+            <label>Monitor</label>
+            <select id="setting-monitor" class="select">
+              <option value="0">All Monitors</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">Input</h3>
+          <div class="setting-row">
+            <label>Cursor Sensitivity</label>
+            <input
+              type="range"
+              id="setting-sensitivity"
+              min="1"
+              max="50"
+              value="10"
+              class="slider"
+            />
+            <span id="sensitivity-label" class="setting-value">1.0x</span>
+          </div>
+          <div class="setting-row">
+            <label>Input Mode</label>
+            <select id="setting-input-mode" class="select">
+              <option value="touchpad">Touchpad (relative)</option>
+              <option value="direct">Direct Touch (absolute)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">System Info</h3>
+          <div id="system-info" class="system-info">
+            <p>Loading...</p>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <button id="btn-fullscreen" class="btn btn-secondary btn-full">
+            Toggle Fullscreen
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  TOAST / NOTIFICATIONS                          -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  BOTTOM TAB BAR                                 -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <nav id="bottom-tab-bar" class="bottom-tab-bar hidden">
+      <button id="tab-arrow-left" class="tab-arrow" title="Previous Tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="desktop" id="tab-desktop">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+          <span>Remote</span>
+        </button>
+        <button class="tab-btn" data-tab="files" id="tab-files">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+          </svg>
+          <span>Files</span>
+        </button>
+        <button class="tab-btn" data-tab="settings" id="tab-settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+          </svg>
+          <span>Settings</span>
+        </button>
+      </div>
+
+      <button id="tab-arrow-right" class="tab-arrow" title="Next Tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!--  SCRIPTS                                        -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <script src="/static/js/connection.js"></script>
+    <script src="/static/js/screen-viewer.js"></script>
+    <script src="/static/js/input-controller.js"></script>
+    <script src="/static/js/keyboard.js"></script>
+    <script src="/static/js/file-transfer.js"></script>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>

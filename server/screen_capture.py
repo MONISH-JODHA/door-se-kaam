@@ -47,7 +47,7 @@ class ScreenCapture:
         self.monitor = monitor if monitor is not None else config.capture_monitor
         self._running = False
 
-        # Adaptive quality tracking
+        # Adaptive tracking (only FPS adapts, quality stays fixed)
         self._frame_times: list = []
         self._adaptive_quality = self.quality
         self._adaptive_fps = self.fps
@@ -55,7 +55,7 @@ class ScreenCapture:
         # Wayland PipeWire session state
         self._pw_node_id: Optional[int] = None
         self._pw_session_proc: Optional[subprocess.Popen] = None
-        self._tmp_file = Path(tempfile.gettempdir()) / "dsk_screenshot.png"
+        self._tmp_file = Path(tempfile.gettempdir()) / "dsk_screenshot.jpg"
 
         # Detect backend
         self._backend = self._detect_backend()
@@ -64,7 +64,6 @@ class ScreenCapture:
     def _detect_backend(self) -> str:
         """Detect the best available screenshot backend."""
         if _is_wayland:
-            # Check if Mutter ScreenCast is available (GNOME Wayland)
             try:
                 result = subprocess.run(
                     ["gdbus", "introspect", "--session",
@@ -77,12 +76,10 @@ class ScreenCapture:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 
-            # Fallback to CLI tools
             for tool in ["grim", "gnome-screenshot", "spectacle"]:
                 if self._cmd_exists(tool):
                     return tool
 
-            # Last resort: try mss via XWayland
             return "mss-fallback"
 
         return "mss"
@@ -97,7 +94,7 @@ class ScreenCapture:
     def _start_pipewire_session(self):
         """Start a persistent ScreenCast D-Bus session via the helper."""
         if self._pw_session_proc is not None:
-            return  # Already running
+            return
 
         logger.info("Starting PipeWire ScreenCast session...")
 
@@ -109,11 +106,9 @@ class ScreenCapture:
             text=True,
         )
 
-        # Read the PipeWire node ID from stdout
         try:
-            for _ in range(10):  # Wait up to 5 seconds
+            for _ in range(10):
                 line = ""
-                # Non-blocking read with timeout
                 import select
                 ready, _, _ = select.select([self._pw_session_proc.stdout], [], [], 0.5)
                 if ready:
@@ -169,7 +164,6 @@ class ScreenCapture:
             except Exception:
                 pass
 
-        # Wayland/fallback: parse xrandr
         try:
             result = subprocess.run(
                 ["xrandr", "--query"],
@@ -234,7 +228,6 @@ class ScreenCapture:
             else:
                 return self._capture_mss()
         except Exception as e:
-            # Try mss as fallback for any backend
             if self._backend != "mss":
                 try:
                     return self._capture_mss()
@@ -244,7 +237,7 @@ class ScreenCapture:
             return None
 
     def _capture_pipewire(self) -> Image.Image:
-        """Capture using PipeWire via Mutter ScreenCast."""
+        """Capture using PipeWire via GStreamer (JPEG output)."""
         if self._pw_node_id is None:
             self._start_pipewire_session()
 
@@ -253,7 +246,6 @@ class ScreenCapture:
 
         tmp = str(self._tmp_file)
 
-        # Remove old file
         if self._tmp_file.exists():
             self._tmp_file.unlink()
 
@@ -262,19 +254,48 @@ class ScreenCapture:
                 "gst-launch-1.0", "-e",
                 "pipewiresrc", f"path={self._pw_node_id}", "num-buffers=1", "!",
                 "videoconvert", "!",
-                "pngenc", "!",
+                "jpegenc", "quality=95", "!",
                 "filesink", f"location={tmp}",
             ],
             capture_output=True, timeout=10,
         )
 
         if result.returncode != 0 or not self._tmp_file.exists():
-            # Session may have ended; restart it
             self._stop_pipewire_session()
             raise RuntimeError("GStreamer capture failed")
 
         img = Image.open(tmp).convert("RGB")
         return img
+
+    def _capture_pipewire_bytes(self, quality=95) -> Optional[bytes]:
+        """Capture using PipeWire and return raw JPEG bytes (no PIL overhead)."""
+        if self._pw_node_id is None:
+            self._start_pipewire_session()
+
+        if self._pw_node_id is None:
+            return None
+
+        tmp = str(self._tmp_file)
+
+        if self._tmp_file.exists():
+            self._tmp_file.unlink()
+
+        result = subprocess.run(
+            [
+                "gst-launch-1.0", "-e",
+                "pipewiresrc", f"path={self._pw_node_id}", "num-buffers=1", "!",
+                "videoconvert", "!",
+                "jpegenc", f"quality={quality}", "!",
+                "filesink", f"location={tmp}",
+            ],
+            capture_output=True, timeout=10,
+        )
+
+        if result.returncode != 0 or not self._tmp_file.exists():
+            self._stop_pipewire_session()
+            return None
+
+        return self._tmp_file.read_bytes()
 
     def _capture_mss(self) -> Image.Image:
         """Capture using mss (X11)."""
@@ -309,7 +330,6 @@ class ScreenCapture:
         self._adaptive_fps = self.fps
         error_count = 0
 
-        # For PipeWire, start session before streaming
         if self._backend == "pipewire":
             self._start_pipewire_session()
 
@@ -318,9 +338,27 @@ class ScreenCapture:
                 frame_start = time.monotonic()
 
                 try:
-                    img = self._capture_image()
+                    frame_data = None
 
-                    if img is None:
+                    if self._backend == "pipewire" and self._pw_node_id:
+                        # Direct JPEG bytes — skip PIL decode/re-encode
+                        frame_data = self._capture_pipewire_bytes(
+                            quality=self._adaptive_quality,
+                        )
+                    else:
+                        # PIL path for other backends
+                        img = self._capture_image()
+                        if img is not None:
+                            if max_width and img.width > max_width:
+                                ratio = max_width / img.width
+                                new_size = (max_width, int(img.height * ratio))
+                                img = img.resize(new_size, Image.LANCZOS)
+                            buf = io.BytesIO()
+                            img.save(buf, format="JPEG",
+                                     quality=self._adaptive_quality, optimize=False)
+                            frame_data = buf.getvalue()
+
+                    if frame_data is None:
                         error_count += 1
                         if error_count > 10:
                             logger.error("Too many capture failures, stopping")
@@ -329,16 +367,6 @@ class ScreenCapture:
                         continue
 
                     error_count = 0
-
-                    if max_width and img.width > max_width:
-                        ratio = max_width / img.width
-                        new_size = (max_width, int(img.height * ratio))
-                        img = img.resize(new_size, Image.LANCZOS)
-
-                    buf = io.BytesIO()
-                    img.save(buf, format="JPEG",
-                             quality=self._adaptive_quality, optimize=False)
-                    frame_data = buf.getvalue()
 
                     frame_time = time.monotonic() - frame_start
                     self._update_adaptive(frame_time)
@@ -362,7 +390,7 @@ class ScreenCapture:
                 self._stop_pipewire_session()
 
     def _update_adaptive(self, frame_time: float):
-        """Adjust quality and FPS based on encoding performance."""
+        """Adapt FPS to match capture speed. Quality stays fixed."""
         self._frame_times.append(frame_time)
         if len(self._frame_times) > 30:
             self._frame_times = self._frame_times[-30:]
@@ -373,11 +401,13 @@ class ScreenCapture:
         target_time = 1.0 / self.fps
 
         if avg_time > target_time * 1.5:
-            self._adaptive_quality = max(config.min_quality, self._adaptive_quality - 5)
-            self._adaptive_fps = max(5, self._adaptive_fps - 2)
+            # Only reduce FPS, NEVER quality
+            self._adaptive_fps = max(3, self._adaptive_fps - 1)
         elif avg_time < target_time * 0.5:
-            self._adaptive_quality = min(self.quality, self._adaptive_quality + 2)
             self._adaptive_fps = min(self.fps, self._adaptive_fps + 1)
+
+        # Quality always stays at configured level
+        self._adaptive_quality = self.quality
 
     def stop(self):
         self._running = False

@@ -30,10 +30,10 @@ class ServerConfig:
 
     # ── Screen Capture ───────────────────────────────────────
     capture_fps: int = 15
-    capture_quality: int = 60  # JPEG quality 1-100
+    capture_quality: int = 80  # JPEG quality 1-100
     capture_monitor: int = 0  # 0 = all monitors, 1+ = specific
     max_fps: int = 30
-    min_quality: int = 20
+    min_quality: int = 40
 
     # ── Input ────────────────────────────────────────────────
     default_sensitivity: float = 1.0
